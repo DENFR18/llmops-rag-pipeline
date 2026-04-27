@@ -70,15 +70,31 @@ def main() -> int:
     parser.add_argument("--summary", default="evals/_runs/summary.md", type=Path)
     args = parser.parse_args()
 
-    scores = evaluate(args.dataset)
     args.summary.parent.mkdir(parents=True, exist_ok=True)
+
+    # Ragas needs a judge LLM (OpenAI by default). When the key isn't
+    # configured the gate would always fail on a fresh repo, so skip cleanly
+    # and leave a visible breadcrumb in the PR comment instead.
+    if not os.environ.get("OPENAI_API_KEY"):
+        msg = (
+            "Ragas eval **skipped**: `OPENAI_API_KEY` is not set in repo secrets. "
+            "Add it (or wire a different judge model in `evals/ragas_eval.py`) to "
+            "enforce the faithfulness / answer_relevancy / context_precision gates.\n"
+        )
+        args.summary.write_text(msg, encoding="utf-8")
+        if gh_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+            Path(gh_summary).write_text(msg, encoding="utf-8")
+        print(msg)
+        return 0
+
+    scores = evaluate(args.dataset)
     write_summary(scores, args.summary)
 
     print(json.dumps(scores, indent=2))
 
-    failures = [m for m, t in THRESHOLDS.items() if scores[m] < t]
     if gh_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         Path(gh_summary).write_text(args.summary.read_text(encoding="utf-8"), encoding="utf-8")
+    failures = [m for m, t in THRESHOLDS.items() if scores[m] < t]
     if failures:
         print(f"FAILED gates: {failures}", file=sys.stderr)
         return 1

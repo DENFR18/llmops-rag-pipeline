@@ -126,6 +126,11 @@ Promptfoo (`evals/promptfooconfig.yaml`) adds behavioral assertions: out-of-scop
 no system-prompt exfiltration, latency budget. Promptfoo is gated on a repo variable
 `RUN_PROMPTFOO=true` so it only runs when a staging API URL is configured.
 
+> **Note:** Ragas needs a judge LLM (OpenAI by default). If `OPENAI_API_KEY` is not set as
+> a repo secret, the eval job **skips** with a sticky PR comment explaining how to enable
+> it. Once the key is wired, the same job becomes a hard gate. This is deliberate: a fresh
+> clone has a green CI on day 1 instead of a red one with no actionable error.
+
 A summary table is posted as a sticky comment on the PR.
 
 ## Deploy to Scaleway
