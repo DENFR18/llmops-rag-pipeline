@@ -1,0 +1,70 @@
+name: deploy-scaleway
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (commit SHA or 'latest')"
+        required: true
+        default: "latest"
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Pull from GHCR and push to Scaleway registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          SCW_REGION: ${{ vars.SCW_REGION || 'fr-par' }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          IMAGE_GHCR="ghcr.io/${{ github.repository }}/llmops-rag-pipeline:${{ steps.tag.outputs.tag }}"
+          docker pull "$IMAGE_GHCR"
+          echo "$SCW_SECRET_KEY" | docker login rg.${SCW_REGION}.scw.cloud -u nologin --password-stdin
+          IMAGE_SCW="rg.${SCW_REGION}.scw.cloud/llmops-rag-pipeline-prod/llmops-rag-pipeline:${{ steps.tag.outputs.tag }}"
+          docker tag "$IMAGE_GHCR" "$IMAGE_SCW"
+          docker push "$IMAGE_SCW"
+
+      - name: Terraform apply
+        working-directory: terraform
+        env:
+          TF_VAR_scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
+          TF_VAR_scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
+          TF_VAR_scw_project_id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          TF_VAR_scw_organization_id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+          TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_voyage_api_key: ${{ secrets.VOYAGE_API_KEY }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_neon_database_url: ${{ secrets.NEON_DATABASE_URL }}
+          TF_VAR_langfuse_public_key: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          TF_VAR_langfuse_secret_key: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          TF_VAR_image_tag: ${{ steps.tag.outputs.tag }}
+        run: |
+          terraform init
+          terraform apply -auto-approve

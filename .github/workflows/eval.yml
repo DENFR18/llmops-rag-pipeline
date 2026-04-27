@@ -1,0 +1,57 @@
+name: eval
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "evals/**"
+      - "requirements*.txt"
+      - ".github/workflows/eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ragas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt
+      - name: Run Ragas with thresholds
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python evals/ragas_eval.py --dataset evals/golden_dataset.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ragas-summary
+          path: evals/_runs/summary.md
+      - name: Comment metrics on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ragas-eval
+          path: evals/_runs/summary.md
+
+  promptfoo:
+    runs-on: ubuntu-latest
+    needs: ragas
+    if: ${{ vars.RUN_PROMPTFOO == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g promptfoo@0.95.0
+      - name: Run promptfoo
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          API_URL: ${{ vars.STAGING_API_URL }}
+        run: promptfoo eval -c evals/promptfooconfig.yaml --no-cache

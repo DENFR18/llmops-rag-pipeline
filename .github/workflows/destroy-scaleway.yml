@@ -1,0 +1,34 @@
+name: destroy-scaleway
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'destroy' to confirm teardown"
+        required: true
+
+jobs:
+  destroy:
+    if: ${{ inputs.confirm == 'destroy' }}
+    runs-on: ubuntu-latest
+    environment: prod-destroy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform destroy
+        working-directory: terraform
+        env:
+          TF_VAR_scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
+          TF_VAR_scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
+          TF_VAR_scw_project_id: ${{ secrets.SCW_DEFAULT_PROJECT_ID }}
+          TF_VAR_scw_organization_id: ${{ secrets.SCW_DEFAULT_ORGANIZATION_ID }}
+          TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_neon_database_url: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          terraform init
+          terraform destroy -auto-approve
