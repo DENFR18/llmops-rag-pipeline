@@ -71,7 +71,9 @@ class ClaudeClient:
             system=_build_system_blocks(context),
             messages=_build_messages(question),
         )
-        text = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+        text = "".join(
+            block.text for block in resp.content if getattr(block, "type", None) == "text"
+        )
         usage = TokenUsage(
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,

@@ -26,9 +26,10 @@ def _load_embedding_model(settings: Settings):
 
 def build_vector_store(settings: Settings | None = None) -> PGVectorStore:
     s = settings or get_settings()
+    async_url = s.neon_database_url.replace("postgresql://", "postgresql+asyncpg://")
     return PGVectorStore.from_params(
         connection_string=s.neon_database_url,
-        async_connection_string=s.neon_database_url.replace("postgresql://", "postgresql+asyncpg://"),
+        async_connection_string=async_url,
         table_name=s.pgvector_table,
         embed_dim=s.pgvector_dim,
     )
